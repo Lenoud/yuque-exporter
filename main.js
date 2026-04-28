@@ -1,30 +1,17 @@
 import puppeteer from 'puppeteer';
-import { exit } from 'process';
 import fs from 'fs';
 import path from 'path';
 import { autoLogin } from './src/login.js';
 import { getAllBooks } from './src/toc.js';
 import { exportMarkDownFiles } from './src/export.js';
-// import { printDirectoryTree } from './src/toc.js';
 
-
-let color = {
+const color = {
     byNum: (mess, fgNum) => {
         mess = mess || '';
         fgNum = fgNum === undefined ? 31 : fgNum;
-        return '\u001b[' + fgNum + 'm' + mess + '\u001b[39m';
+        return '[' + fgNum + 'm' + mess + '[39m';
     },
-    black: (mess) => color.byNum(mess, 30),
-    red: (mess) => color.byNum(mess, 31),
-    green: (mess) => color.byNum(mess, 32),
-    yellow: (mess) => color.byNum(mess, 33),
-    blue: (mess) => color.byNum(mess, 34),
-    magenta: (mess) => color.byNum(mess, 35),
-    cyan: (mess) => color.byNum(mess, 36),
-    white: (mess) => color.byNum(mess, 37)
 };
-
-
 
 async function run() {
     if (!process.env.EXPORT_PATH) {
@@ -33,21 +20,35 @@ async function run() {
             fs.mkdirSync(outputDir);
         }
         process.env.EXPORT_PATH = outputDir;
-        console.log(`The environment variable EXPORT_PATH is not set, so the default ${outputDir} is used as the export path.`)
+        console.log(`EXPORT_PATH not set, using default: ${outputDir}`)
     }
 
-    // const page = await BrowserPage.getInstance();
-    const browser = await puppeteer.launch({ headless: true }); // true:not show browser
+    const cookieFile = './cookies.json';
+    const hasCookies = fs.existsSync(cookieFile);
+    const browser = await puppeteer.launch({
+        headless: hasCookies ? 'new' : false,
+        executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled',
+        ],
+    });
     const page = await browser.newPage();
 
-    // 检查是否存在 cookie 文件
+    await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        window.chrome = { runtime: {} };
+    });
+    await page.setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
     await autoLogin(page)
-    console.log(color.green("Login successfully!"))
-    console.log()
+    console.log(color.byNum("Login successfully!", 32))
 
     console.log("Get book stacks ...")
     const books = await getAllBooks(page)
-    // console.log(books)
 
     console.log("Start export all books ...")
     await exportMarkDownFiles(page, books)
@@ -55,6 +56,4 @@ async function run() {
     browser.close()
 };
 
-
 run();
-
